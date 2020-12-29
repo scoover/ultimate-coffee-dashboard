@@ -72,8 +72,27 @@ function updateOrders() {
         itemInfo.push(getProperty(o,['id']));
         itemInfo.push(getProperty(o,['order_number']));
         itemInfo.push(getProperty(i,['quantity']));
-        itemInfo.push(getProperty(i,['vendor']));
+
+        var vendor = getProperty(i,['vendor']);
+
+        if(!vendor) {
+          var lookup = {
+            '35137261633699': 'Olympia Coffee',
+            '35125657993379': 'Olympia Coffee',
+            '35125709602979': 'Lighthouse Roasters'
+          }
+
+          var variantId = getProperty(i,['variant_id']);
+
+          if(variantId && lookup.hasOwnProperty(variantId)) {
+            vendor = lookup[variantId];
+          }          
+        }
+
+        itemInfo.push(vendor);
         itemInfo.push(getProperty(i,['title']));      
+        itemInfo.push(getProperty(i,['price']));
+        itemInfo.push(getProperty(i,['total_discount']));
         rows.push(itemInfo);  
       });
     });
