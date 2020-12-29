@@ -7,6 +7,7 @@ function onOpen() {
 
 function updateFromShopify() {
   updateCustomers();
+  updateOrders();
 }
 
 function updateCustomers() {
@@ -48,6 +49,36 @@ function updateCustomers() {
     });
 
     customersSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  }
+}
+
+function updateOrders() {
+  // load the linked spreadsheet object
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var itemsSheet = spreadsheet.getSheetByName('Order Items');
+
+  var results =  shopifyApiPost(
+    '/admin/api/2020-10/orders.json?status=any&financial_status=paid&fields=id,order_number,line_items', null);
+  var rows = [ ];
+
+  if(results.hasOwnProperty('orders') && results.orders.length) {
+    results.orders.forEach(function (o, index) {
+
+      // skip orders that have zero line items
+      if(!o.hasOwnProperty('line_items') || !o.line_items.length) { return; }
+
+      o.line_items.forEach(function (i) {
+        var itemInfo = [ ];
+        itemInfo.push(getProperty(o,['id']));
+        itemInfo.push(getProperty(o,['order_number']));
+        itemInfo.push(getProperty(i,['quantity']));
+        itemInfo.push(getProperty(i,['vendor']));
+        itemInfo.push(getProperty(i,['title']));      
+        rows.push(itemInfo);  
+      });
+    });
+
+    itemsSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   }
 }
 
