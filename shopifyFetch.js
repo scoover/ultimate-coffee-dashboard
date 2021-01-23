@@ -15,12 +15,19 @@ function updateCustomers() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   var customersSheet = spreadsheet.getSheetByName('Customers');
 
-  var results =  shopifyApiPost(
-    '/admin/api/2020-10/customers.json?fields=id,created_at,updated_at,first_name,last_name,total_spent,orders_count,last_order_name,addresses', null);
+  var results =  shopifyApiPostRequest(
+    '/admin/api/2020-10/customers.json',
+    {
+      fields: 'id,created_at,updated_at,first_name,last_name,total_spent,orders_count,last_order_name,addresses',
+      limit: 250
+    },
+    'customers'
+  );
+
   var rows = [ ];
 
-  if(results.hasOwnProperty('customers') && results.customers.length) {
-    results.customers.forEach(function (customer, index) {
+  if(results.length) {
+    results.forEach(function (customer, index) {
       var customerInfo = [ ];
 
       // skip customers that have zero orders
@@ -57,17 +64,34 @@ function updateOrders() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   var itemsSheet = spreadsheet.getSheetByName('Order Items');
 
-  var results =  shopifyApiPost(
-    '/admin/api/2020-10/orders.json?status=any&financial_status=paid&fields=id,order_number,line_items', null);
+  var results =  shopifyApiPostRequest(
+    '/admin/api/2020-10/orders.json',
+    {
+      status: 'any',
+      financial_status: 'paid',
+      fields: 'id,order_number,line_items',
+      limit: 250
+    },
+    'orders'
+  );
+  
   var rows = [ ];
 
-  if(results.hasOwnProperty('orders') && results.orders.length) {
-    results.orders.forEach(function (o, index) {
+  if(results.length) {
+    results.forEach(function (o, index) {
 
       // skip orders that have zero line items
       if(!o.hasOwnProperty('line_items') || !o.line_items.length) { return; }
 
       o.line_items.forEach(function (i) {
+        var discount = 0;
+
+        if(i.hasOwnProperty('discount_allocations')) {
+          i.discount_allocations.forEach(function (d) {
+            if(d.hasOwnProperty('amount')) { discount += d.amount; }
+          });
+        };
+
         var itemInfo = [ ];
         itemInfo.push(getProperty(o,['id']));
         itemInfo.push(getProperty(o,['order_number']));
@@ -75,6 +99,7 @@ function updateOrders() {
 
         var vendor = getProperty(i,['vendor']);
 
+        // clean up the vendor name if it is null
         if(!vendor) {
           var lookup = {
             '35137261633699': 'Olympia Coffee',
@@ -92,13 +117,48 @@ function updateOrders() {
         itemInfo.push(vendor);
         itemInfo.push(getProperty(i,['title']));      
         itemInfo.push(getProperty(i,['price']));
-        itemInfo.push(getProperty(i,['total_discount']));
+        itemInfo.push(discount);
         rows.push(itemInfo);  
       });
     });
 
     itemsSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   }
+}
+
+function shopifyApiPostRequest(endpoint, params, responseKey) {
+  var results = [ ];
+  var response = null;
+
+  do {
+    var apiCall = endpoint;
+
+    if((response !== null) && response.hasOwnProperty('next')) {
+      // add the pagination field `page_info`
+      // https://shopify.dev/tutorials/make-paginated-requests-to-rest-admin-api
+      params.page_info = response.next;
+      
+      // remove parameters that are invalid after initial request
+      Object.keys(params).forEach(function (param) {      
+        if(['page_info', 'limit', 'fields'].indexOf(param)) { delete params[param]; }
+      });
+    }
+
+    // build the api call by adding parameters
+    Object.keys(params).forEach(function (param, index) {      
+      apiCall += (index? '&':'?') + param + '=' + params[param];
+    });
+
+    // make the Post request
+    response = shopifyApiPost(apiCall, null);
+
+    // append the content if present
+    if(response.hasOwnProperty('content') && response.content.hasOwnProperty(responseKey)) {
+      results = results.concat(response.content[responseKey]);
+    }
+  } while (response.hasOwnProperty('next'));
+
+  return results;
 }
 
 function shopifyApiPost(apiCall, postData) {
@@ -119,11 +179,31 @@ function shopifyApiPost(apiCall, postData) {
   var response = UrlFetchApp.fetch(request, options);
 
   if (response.getResponseCode() === 200) {
-    try { return JSON.parse(response.getContentText()); }
+    try { 
+      var output = { content: JSON.parse(response.getContentText()) };
+      var paging = shopifyApiGetPaging(response);
+      if(paging.hasOwnProperty('next')) { output.next = paging.next; }
+      if(paging.hasOwnProperty('previous')) { output.previous = paging.previous; }
+      return output;
+    }
     catch(e) { }
   }
 
-  return null;
+  return { content: null };
+}
+
+function shopifyApiGetPaging(response) {
+  var paging = { };
+  if (response.getAllHeaders().Link) {
+    var match;
+    while ((match = /page_info=([^>]+)>; rel="([^"]+)/g.exec(response.getAllHeaders().Link)) !== null) {
+      // match[1] is the cursor (page_info)
+      // match[2] is "next" or "previous"
+      paging[match[2]] = match[1];
+    }
+  }
+  // returns {next: 'the next cursor', previous: 'the previous cursor'}
+  return paging;
 }
 
 // getProperty(object, property array): get value from array of nested property names (null if not present)
