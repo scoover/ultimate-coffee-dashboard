@@ -45,7 +45,7 @@ function updateCustomers() {
       var zips = '';
       if(customer.hasOwnProperty('addresses') && customer.addresses.length) {
         customer.addresses.forEach(function (a) {
-          if(a.hasOwnProperty('zip') && a.zip) {
+          if(a.hasOwnProperty('zip') && a.zip && (zips.indexOf(a.zip) == -1)) {
             zips += (zips.length? ' ':'') + a.zip
           }
         });
