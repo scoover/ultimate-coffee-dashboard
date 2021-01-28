@@ -69,7 +69,7 @@ function updateOrders() {
     {
       status: 'any',
       financial_status: 'paid',
-      fields: 'id,order_number,line_items',
+      fields: 'id,processed_at,order_number,line_items',
       limit: 250
     },
     'orders'
@@ -93,7 +93,8 @@ function updateOrders() {
         };
 
         var itemInfo = [ ];
-        itemInfo.push(getProperty(o,['id']));
+        itemInfo.push(new Date(getProperty(o,['processed_at'])));
+        itemInfo.push(null);
         itemInfo.push(getProperty(o,['order_number']));
         itemInfo.push(getProperty(i,['quantity']));
 
